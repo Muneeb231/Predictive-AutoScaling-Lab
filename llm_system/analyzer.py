@@ -74,6 +74,25 @@ INSTRUCTIONS:
 3. Explain WHY the problem occurs and WHY your fix will help
 4. Provide quantitative expected impact
 
+COMMON MISCONCEPTIONS TO AVOID:
+
+1. Cooldown Paradox:
+  WRONG: "Violations after scale-downs → prevent scale-downs → longer cooldown"
+  RIGHT: "Violations after scale-downs → enable faster scale-UPS → shorter cooldown"
+  Why: Cooldown affects BOTH directions. Longer cooldown delays scale-ups more than it prevents premature scale-downs.
+
+2. Capacity Gaming:
+  WRONG: "Reduce capacity_per_instance to force more instances (safety buffer)"
+  RIGHT: This creates more granular scaling but doesn't improve timing/forecasting.
+
+EXAMPLE OF GOOD REASONING:
+Pattern: 68 scaling events, no flapping detected, high MAPE (33.1%)
+Root Cause: Forecasts lag during load changes, system scales too late
+Fix: Reduce cooldown 5 → 3 minutes
+Why: Shorter cooldown = quicker scale-up when load exceeds prediction
+Trade-off: Slight increase in scaling events vs major reduction in violations
+Result: ACCEPTED - SLA violations reduced 87 → 82 (-5.7%)
+
 ALLOWED PARAMETERS:
 - cooldown: 1-60 (minutes)
 - capacity_per_instance: 10-1000
@@ -96,7 +115,7 @@ def _call_gemini(prompt: str) -> str:
         prompt,
         generation_config=genai.GenerationConfig(
             temperature=0,
-            max_output_tokens=16384,
+            max_output_tokens=40000,
         )
     )
 
