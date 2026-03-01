@@ -1,9 +1,10 @@
-"""LLM-powered analysis of autoscaling simulation results using Claude API."""
+"""LLM-powered analysis using Gemini API."""
 
 import json
 import os
+import re
 import pandas as pd
-import anthropic
+import google.generativeai as genai
 
 from llm_system.metrics import calculate_all, detect_flapping_windows
 from llm_system.schemas import RecommendationResponse
@@ -16,47 +17,19 @@ windows as evidence for your recommendations."""
 
 
 def analyze(simulation_csv_path: str, config: dict) -> list[dict]:
-    """Analyze simulation results and generate recommendations using Claude API.
-
-    Args:
-        simulation_csv_path: Path to simulator_output.csv
-        config: Simulator configuration dict
-
-    Returns:
-        List of recommendation dicts (raw dicts, not Pydantic models)
-    """
-    # Load and analyze simulation data
     df = pd.read_csv(simulation_csv_path)
     summary_metrics = calculate_all(df, config)
     flapping_windows = detect_flapping_windows(df)
 
-    # Build prompt
-    system_msg, user_msg = _build_prompt(df, config, summary_metrics, flapping_windows)
+    prompt = _build_prompt(df, config, summary_metrics, flapping_windows)
+    response_text = _call_gemini(prompt)
 
-    # Call Claude API with retry logic
-    response_text = _call_claude(system_msg, user_msg)
-
-    # Parse and return recommendations
-    recommendations = _parse_response(response_text, system_msg, user_msg)
-    return recommendations
+    return _parse_response(response_text)
 
 
-def _build_prompt(df: pd.DataFrame, config: dict, summary_metrics: dict, flapping_windows: list[dict]) -> tuple[str, str]:
-    """Build system and user messages for Claude API.
-
-    Args:
-        df: Simulation DataFrame
-        config: Simulator config
-        summary_metrics: Pre-computed metrics from calculate_all()
-        flapping_windows: Pre-computed flapping windows
-
-    Returns:
-        Tuple of (system_message, user_message)
-    """
-    # Format config as pretty JSON
+def _build_prompt(df: pd.DataFrame, config: dict, summary_metrics: dict, flapping_windows: list[dict]) -> str:
     config_json = json.dumps(config, indent=2)
 
-    # Format flapping windows
     if flapping_windows:
         flapping_text = "\n".join([
             f"- Minutes {w['start_minute']}-{w['end_minute']}: {w['events']} scaling events"
@@ -65,14 +38,12 @@ def _build_prompt(df: pd.DataFrame, config: dict, summary_metrics: dict, flappin
     else:
         flapping_text = "None detected"
 
-    # Format CSV data as JSON array
     csv_data_json = df.to_json(orient='records', indent=2)
-
-    # Get JSON schema from Pydantic model
     schema_json = json.dumps(RecommendationResponse.model_json_schema(), indent=2)
 
-    # Build user message
-    user_message = f"""TASK: Analyze the autoscaling simulation data below and recommend 1-3
+    return f"""{SYSTEM_MESSAGE}
+
+TASK: Analyze the autoscaling simulation data below and recommend 1-3
 configuration changes. Prioritize reducing SLA violations over cost savings
 when trade-offs are necessary.
 
@@ -96,12 +67,10 @@ SIMULATION DATA (1440 minutes):
 {csv_data_json}
 
 INSTRUCTIONS:
-1. Identify patterns: flapping, forecast errors, over/under-provisioning,
-   SLA violation clusters
-2. For each recommendation, cite SPECIFIC numbers from the data
-   (e.g., "23 scaling events between minute 480-510")
+1. Identify patterns: flapping, forecast errors, over/under-provisioning, SLA violation clusters
+2. Cite SPECIFIC numbers from the data
 3. Explain WHY the problem occurs and WHY your fix will help
-4. Provide quantitative expected impact (e.g., "reduce violations by ~40%")
+4. Provide quantitative expected impact
 
 ALLOWED PARAMETERS:
 - cooldown: 1-60 (minutes)
@@ -109,86 +78,39 @@ ALLOWED PARAMETERS:
 - initial_instances: 1-10
 - arima_order: tuple of (p, d, q) where 0 <= p,d,q <= 5
 
-Output ONLY valid JSON matching this schema:
+OUTPUT FORMAT:
+- Output ONLY raw JSON, no markdown code blocks
+- Do NOT wrap the JSON in ```json``` or any other formatting
+- Start your response with {{ and end with }}
+- The JSON must match this exact schema:
 {schema_json}"""
 
-    return SYSTEM_MESSAGE, user_message
 
+def _call_gemini(prompt: str) -> str:
+    genai.configure(api_key=os.environ["GOOGLE_API_KEY_2_5"])
+    model = genai.GenerativeModel('gemini-3-flash-preview')
 
-def _call_claude(system_msg: str, user_msg: str) -> str:
-    """Call Claude API and return response text.
-
-    Args:
-        system_msg: System message defining role
-        user_msg: User message with task and data
-
-    Returns:
-        Response text from Claude
-
-    Raises:
-        Exception: If API call fails
-    """
-    # Initialize client (reads ANTHROPIC_API_KEY from environment)
-    client = anthropic.Anthropic()
-
-    # Call Claude API
-    response = client.messages.create(
-        model="claude-sonnet-4-20241022",
-        max_tokens=4096,
-        temperature=0,
-        system=system_msg,
-        messages=[{"role": "user", "content": user_msg}]
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.GenerationConfig(
+            temperature=0,
+            max_output_tokens=16384,
+        )
     )
 
-    # Extract text from response
-    return response.content[0].text
+    return response.text
 
 
-def _parse_response(response_text: str, system_msg: str, user_msg: str) -> list[dict]:
-    """Parse JSON response from Claude, with retry logic.
-
-    Args:
-        response_text: Raw response text from Claude
-        system_msg: Original system message (for retry)
-        user_msg: Original user message (for retry)
-
-    Returns:
-        List of recommendation dicts
-
-    Raises:
-        Exception: If parsing fails after retry
-    """
+def _parse_response(response_text: str) -> list[dict]:
     try:
-        # Try to parse JSON
         parsed = json.loads(response_text)
         return parsed["recommendations"]
-    except json.JSONDecodeError as e:
-        # Retry once with clarification
-        print(f"Warning: Initial JSON parse failed: {e}")
-        print("Retrying with clarification...")
+    except json.JSONDecodeError:
+        pass
 
-        retry_msg = user_msg + "\n\nYour previous response was not valid JSON. Output ONLY the JSON object, no other text."
+    json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+    if json_match:
+        parsed = json.loads(json_match.group(1))
+        return parsed["recommendations"]
 
-        # Call Claude again
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model="claude-sonnet-4-20241022",
-            max_tokens=4096,
-            temperature=0,
-            system=system_msg,
-            messages=[{"role": "user", "content": retry_msg}]
-        )
-        retry_text = response.content[0].text
-
-        try:
-            parsed = json.loads(retry_text)
-            return parsed["recommendations"]
-        except json.JSONDecodeError as retry_error:
-            # Both attempts failed
-            raise Exception(
-                f"Failed to parse JSON after retry.\n"
-                f"Original error: {e}\n"
-                f"Retry error: {retry_error}\n"
-                f"Original response:\n{response_text}\n\n"
-                f"Retry response:\n{retry_text}"
-            )
+    raise Exception(f"Could not parse JSON from response:\n{response_text}")
