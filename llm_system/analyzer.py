@@ -3,9 +3,13 @@ import os
 import re
 import pandas as pd
 import google.generativeai as genai
+from dotenv import load_dotenv
 
 from llm_system.metrics import calculate_all, detect_flapping_windows
 from llm_system.schemas import RecommendationResponse
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 SYSTEM_MESSAGE = """You are an expert AIOps engineer specializing in autoscaling optimization.
