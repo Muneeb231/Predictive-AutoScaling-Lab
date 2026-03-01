@@ -1,5 +1,3 @@
-"""LLM-powered analysis using Gemini API."""
-
 import json
 import os
 import re
@@ -87,7 +85,7 @@ OUTPUT FORMAT:
 
 
 def _call_gemini(prompt: str) -> str:
-    genai.configure(api_key=os.environ["GOOGLE_API_KEY_2_5"])
+    genai.configure(api_key=os.environ["GEMINI_3_FLASH_PREVIEW"])
     model = genai.GenerativeModel('gemini-3-flash-preview')
 
     response = model.generate_content(
