@@ -5,6 +5,7 @@ import argparse
 import json
 import pandas as pd
 from datetime import datetime
+import os
 
 from llm_system.analyzer import analyze
 from llm_system.validator import validate_schema, test_recommendation
@@ -12,9 +13,13 @@ from llm_system.metrics import calculate_all
 
 
 def main():
+
+    
     """Main entry point for recommendation analysis."""
     # Parse CLI arguments
     parser = argparse.ArgumentParser(description="LLM Recommendation Analysis")
+    
+    
     parser.add_argument("--data", default="simulator_output.csv",
                        help="Path to simulator output CSV")
     parser.add_argument("--config", default="experiments/baseline_config.json",
@@ -24,6 +29,7 @@ def main():
     args = parser.parse_args()
 
     # Load data
+    
     df = pd.read_csv(args.data)
     with open(args.config, 'r') as f:
         config = json.load(f)
@@ -155,6 +161,10 @@ def main():
     # Save to file
     timestamp_file = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = f"experiments/results/experiment_{timestamp_file}.json"
+
+    # Ensure output directory exists
+    os.makedirs("experiments/results", exist_ok=True)
+
     with open(output_path, 'w') as f:
         json.dump(experiment_result, f, indent=2)
 
@@ -166,4 +176,6 @@ def main():
 
 
 if __name__ == "__main__":
+
+
     main()

@@ -71,11 +71,30 @@ class AutoScalingSimulator:
 
 if __name__ == "__main__":
     # Load your data
-    df = pd.read_csv("app_level.csv")  # aggregated per-app time series
+    df = pd.read_csv("invocations_per_function_md.anon.d01.csv")
+
     time_cols = [str(i) for i in range(1, 1441)]
 
     # Pick one app
     actual_load = df.iloc[0][time_cols].values.astype(float)
+
+    ## Experiment with different load patterns
+
+    
+    # 1) High load scenario for testing
+    # actual_load = actual_load * 3
+
+    # 2) Bursty traffic
+    # actual_load = actual_load + np.random.randint(0, 200, size=len(actual_load))
+   
+    # 3) Sudden spikes
+    # spikes = np.zeros_like(actual_load)
+    # spikes[np.random.choice(len(actual_load), 10)] = 500
+    # actual_load = actual_load + spikes
+
+
+
+
 
     # For now, use a naive predictor (shifted actuals)
     predicted_load = np.roll(actual_load, 1)
