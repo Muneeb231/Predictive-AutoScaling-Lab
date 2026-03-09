@@ -1,6 +1,0 @@
-{
-  "capacity_per_instance": 100,
-  "cost_per_instance": 1.0,
-  "cooldown": 5,
-  "initial_instances": 1
-}
