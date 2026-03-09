@@ -1,0 +1,87 @@
+{
+  "timestamp": "2026-03-07T15:41:43",
+  "baseline_config": {
+    "capacity_per_instance": 100,
+    "cost_per_instance": 1.0,
+    "cooldown": 5,
+    "initial_instances": 1
+  },
+  "baseline_metrics": {
+    "sla_violations": 0,
+    "total_cost": 1440.0,
+    "scaling_events": 0,
+    "scale_up_events": 0,
+    "scale_down_events": 0,
+    "avg_utilization": 0.6,
+    "max_instances": 1,
+    "min_instances": 1,
+    "mape": 100.0,
+    "mae": 1.2
+  },
+  "recommendations": [
+    {
+      "recommendation": {
+        "type": "parameter_tuning",
+        "parameter": "capacity_per_instance",
+        "current_value": 100,
+        "proposed_value": 10,
+        "rationale": "The system is significantly over-provisioned. The maximum observed load is 3.0 (e.g., at minutes 3, 8, 13), while the capacity per instance is 100.0. This results in an extremely low average utilization of 0.6%. Reducing capacity to 10 increases utilization to a more efficient level while still providing a 3.3x safety buffer over the peak load.",
+        "expected_impact": "Average utilization will increase from 0.6% to approximately 6.0% without increasing SLA violations, improving resource efficiency metrics.",
+        "confidence": 0.95,
+        "evidence": {
+          "max_actual_load": 3.0,
+          "avg_utilization_percent": 0.6,
+          "current_instance_capacity": 100
+        }
+      },
+      "schema_valid": true,
+      "simulation_result": {
+        "new_metrics": {
+          "sla_violations": 0,
+          "total_cost": 1440.0,
+          "scaling_events": 0,
+          "scale_up_events": 0,
+          "scale_down_events": 0,
+          "avg_utilization": 6.000000000000001,
+          "max_instances": 1,
+          "min_instances": 1,
+          "mape": 100.0,
+          "mae": 1.2
+        },
+        "sla_improvement_pct": 0.0,
+        "cost_change_pct": 0.0,
+        "scaling_events_change_pct": 0.0,
+        "accepted": false,
+        "reason": "No improvement in SLA, cost, or scaling events"
+      }
+    },
+    {
+      "recommendation": {
+        "type": "model_tuning",
+        "parameter": "arima_order",
+        "current_value": "(1, 0, 0)",
+        "proposed_value": "(5, 0, 0)",
+        "rationale": "The forecast error (MAPE 100%) is caused by a 1-minute lag in the prediction. The actual load spikes to 3.0 every 5 minutes (minutes 3, 8, 13, etc.), but the prediction spikes one minute later (minutes 4, 9, 14, etc.). Increasing the AR order (p) to 5 will allow the model to capture the 5-minute periodicity of the workload and eliminate the lag.",
+        "expected_impact": "Significant reduction in Forecast Error (MAPE) and MAE as predictions align with the actual load cycle.",
+        "confidence": 0.85,
+        "evidence": {
+          "actual_load_spike_minute": 3,
+          "predicted_load_spike_minute": 4,
+          "forecast_mape": 100.0,
+          "spike_period_minutes": 5
+        }
+      },
+      "schema_valid": true,
+      "simulation_result": null
+    }
+  ],
+  "summary": {
+    "total_recommendations": 2,
+    "schema_valid": 2,
+    "simulation_eligible": 1,
+    "simulation_tested": 1,
+    "simulation_skipped": 1,
+    "accepted": 0,
+    "acceptance_rate": 0.0
+  }
+}
